@@ -161,10 +161,56 @@ module Parallel
       `which hwprefs` != ''
     end
 
+    def start_result_thread(items, processor)
+      if not processor
+        @result_thread = nil
+        return
+      end
+
+      @result_thread = Thread.new do
+        processed = {}
+        cur = Thread.current
+
+        while not cur[:done] or processed.keys.length != cur[:queued].keys.length do
+          if processed.keys.length == cur[:queued].keys.length
+            Thread.stop
+          end
+          (cur[:queued].keys - processed.keys).each do |index|
+            processor.call(cur[:results][index], items[index], index)
+            processed[index] = true
+          end
+        end
+      end
+
+      # Set up the thread local vars here instead of in the thread to prevent
+      # synchronization issues where notify_result_thread gets called before
+      # the thread has started for the first time
+      @result_thread[:results] = []
+      @result_thread[:queued] = {}
+      @result_thread[:done] = false
+    end
+
+    def stop_result_thread
+      if @result_thread
+        @result_thread[:done] = true
+        @result_thread.run
+      end
+    end
+
+    def notify_result_thread(results, index)
+      if @result_thread
+        @result_thread[:results] = results
+        @result_thread[:queued][index] = true
+        @result_thread.run
+      end
+    end
+
     def work_in_threads(items, options, &block)
       results = []
       current = -1
       exception = nil
+
+      start_result_thread items, options[:with_result]
 
       in_threads(options[:count]) do
         # as long as there are more items, work on one of them
@@ -177,6 +223,7 @@ module Parallel
           with_instrumentation items[index], index, options do
             begin
               results[index] = call_with_index(items, index, options, &block)
+              notify_result_thread results, index
             rescue Exception => e
               exception = e
               break
@@ -184,6 +231,8 @@ module Parallel
           end
         end
       end
+
+      stop_result_thread
 
       raise exception if exception
 
@@ -195,6 +244,8 @@ module Parallel
       current_index = -1
       results = []
       exception = nil
+
+      start_result_thread items, options[:with_result]
 
       in_threads(options[:count]) do |i|
         worker = workers[i]
@@ -213,6 +264,7 @@ module Parallel
               exception = output.exception
             else
               results[index] = output
+              notify_result_thread results, index
             end
           end
         ensure
@@ -220,6 +272,8 @@ module Parallel
           worker.wait # if it goes zombie, rather wait here to be able to debug
         end
       end
+
+      stop_result_thread
 
       raise exception if exception
 

@@ -183,6 +183,16 @@ describe Parallel do
       Parallel.map([:first, :second, :third], :start => monitor, :in_processes => 3) {}
     end
 
+    it "provides result when an item of work is completed by a worker process" do
+      monitor = double('monitor', :call => nil)
+      monitor.should_receive(:call).once.with('0 result', :first, 0)
+      monitor.should_receive(:call).once.with('1 result', :second, 1)
+      monitor.should_receive(:call).once.with('2 result', :third, 2)
+      Parallel.map_with_index([:first, :second, :third], :with_result => monitor, :in_processes => 3) do |item, index|
+        index.to_s + ' result'
+      end
+    end
+
     it "notifies when an item of work is completed by a worker process" do
       monitor = double('monitor', :call => nil)
       monitor.should_receive(:call).once.with(:first, 0)
@@ -197,6 +207,16 @@ describe Parallel do
       monitor.should_receive(:call).once.with(:second, 1)
       monitor.should_receive(:call).once.with(:third, 2)
       Parallel.map([:first, :second, :third], :start => monitor, :in_threads => 3) {}
+    end
+
+    it "provides result when an item of work is completed by a threaded worker" do
+      monitor = double('monitor', :call => nil)
+      monitor.should_receive(:call).once.with('0 result', :first, 0)
+      monitor.should_receive(:call).once.with('1 result', :second, 1)
+      monitor.should_receive(:call).once.with('2 result', :third, 2)
+      Parallel.map_with_index([:first, :second, :third], :with_result => monitor, :in_threads => 3) do |item, index|
+        index.to_s + ' result'
+      end
     end
 
     it "notifies when an item of work is completed by a threaded worker" do

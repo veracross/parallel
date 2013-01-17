@@ -62,6 +62,19 @@ Parallel.map(1..100, :finish => lambda { |i, item| progress.inc }) { sleep 1 }
 progress.finish
 ```
 
+### Result Thread
+
+Perform operations on the result of each item in a single thread running in the main process
+
+```Ruby
+prng = Random.new(3728921)
+puts_result = lambda {|result, item, i| puts "#{i}: #{result}" }
+results = Parallel.map(1..40, :in_threads => 3, :with_result => puts_result) do |item|
+  sleep prng.rand(0.01..0.3)
+  "result for #{item}"
+end
+```
+
 Tips
 ====
  - [Benchmark/Test] Disable threading/forking with `:in_threads => 0` or `:in_processes => 0`, great to test performance or to debug parallel issues
