@@ -176,8 +176,13 @@ module Parallel
             Thread.stop
           end
           (cur[:queued].keys - processed.keys).each do |index|
-            processor.call(cur[:results][index], items[index], index)
-            processed[index] = true
+            begin
+              processor.call(cur[:results][index], items[index], index)
+              processed[index] = true
+            rescue Exception => e
+              cur[:exception] = e
+              break
+            end
           end
         end
       end
@@ -194,6 +199,7 @@ module Parallel
       if @result_thread
         @result_thread[:done] = true
         @result_thread.run
+        raise @result_thread[:exception] if @result_thread[:exception]
       end
     end
 
