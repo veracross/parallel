@@ -75,6 +75,23 @@ results = Parallel.map(1..40, :in_threads => 3, :with_result => puts_result) do 
 end
 ```
 
+### IO Flushing
+
+When using processes, file handles are passed to the forked workers. If one of
+those file descriptors has buffered data, each worker will get a copy of it, and
+the buffered data will be flushed when the worker process exits. This manifests
+itself as duplicate writes to files. By default, all IO objects will be flushed
+before workers are forked. To prevent this behavior, set `:no_flush` to `true.
+
+```ruby
+f = File.open('/path', 'w')
+f.puts "Content"
+results = Parallel.map(1..20, :in_processes => 3, :no_flush => true) do |item|
+  # This will cause Content to be written to the file multiple times
+  f.flush
+end
+```
+
 Tips
 ====
  - [Benchmark/Test] Disable threading/forking with `:in_threads => 0` or `:in_processes => 0`, great to test performance or to debug parallel issues

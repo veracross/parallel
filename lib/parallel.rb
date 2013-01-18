@@ -287,6 +287,13 @@ module Parallel
     end
 
     def create_workers(items, options, &block)
+      # Flush all file descriptors before forking, otherwise forked workers
+      # may inherit buffered data, resulting in duplicate writes to files
+      # when worker processes exit
+      if not options[:no_flush]
+        ObjectSpace.each_object(IO) {|io| io.flush if not io.closed? }
+      end
+
       workers = []
       Array.new(options[:count]).each do
         workers << worker(items, options.merge(:started_workers => workers), &block)
