@@ -163,11 +163,10 @@ module Parallel
 
     def start_result_thread(items, processor)
       if not processor
-        @result_thread = nil
-        return
+        return nil
       end
 
-      @result_thread = Thread.new do
+      thread = Thread.new do
         processed = {}
         cur = Thread.current
 
@@ -190,24 +189,28 @@ module Parallel
       # Set up the thread local vars here instead of in the thread to prevent
       # synchronization issues where notify_result_thread gets called before
       # the thread has started for the first time
-      @result_thread[:results] = []
-      @result_thread[:queued] = {}
-      @result_thread[:done] = false
+      thread[:results] = []
+      thread[:queued] = {}
+      thread[:done] = false
+
+      thread
     end
 
-    def stop_result_thread
-      if @result_thread
-        @result_thread[:done] = true
-        @result_thread.run
-        raise @result_thread[:exception] if @result_thread[:exception]
+    def stop_result_thread(thread)
+      if thread
+        thread[:done] = true
+        raise thread[:exception] if thread[:exception]
+        if thread.alive?
+          thread.run
+        end
       end
     end
 
-    def notify_result_thread(results, index)
-      if @result_thread
-        @result_thread[:results] = results
-        @result_thread[:queued][index] = true
-        @result_thread.run
+    def notify_result_thread(thread, results, index)
+      if thread
+        thread[:results] = results
+        thread[:queued][index] = true
+        thread.run
       end
     end
 
@@ -216,7 +219,7 @@ module Parallel
       current = -1
       exception = nil
 
-      start_result_thread items, options[:with_result]
+      res_thread = start_result_thread items, options[:with_result]
 
       in_threads(options[:count]) do
         # as long as there are more items, work on one of them
@@ -229,7 +232,7 @@ module Parallel
           with_instrumentation items[index], index, options do
             begin
               results[index] = call_with_index(items, index, options, &block)
-              notify_result_thread results, index
+              notify_result_thread res_thread, results, index
             rescue Exception => e
               exception = e
               break
@@ -238,7 +241,7 @@ module Parallel
         end
       end
 
-      stop_result_thread
+      stop_result_thread res_thread
 
       raise exception if exception
 
@@ -251,7 +254,7 @@ module Parallel
       results = []
       exception = nil
 
-      start_result_thread items, options[:with_result]
+      res_thread = start_result_thread items, options[:with_result]
 
       in_threads(options[:count]) do |i|
         worker = workers[i]
@@ -270,7 +273,7 @@ module Parallel
               exception = output.exception
             else
               results[index] = output
-              notify_result_thread results, index
+              notify_result_thread res_thread, results, index
             end
           end
         ensure
@@ -279,7 +282,7 @@ module Parallel
         end
       end
 
-      stop_result_thread
+      stop_result_thread res_thread
 
       raise exception if exception
 
