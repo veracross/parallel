@@ -202,6 +202,7 @@ module Parallel
         raise thread[:exception] if thread[:exception]
         if thread.alive?
           thread.run
+          thread.join
         end
       end
     end
