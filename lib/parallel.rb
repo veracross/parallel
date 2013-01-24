@@ -295,7 +295,9 @@ module Parallel
       # may inherit buffered data, resulting in duplicate writes to files
       # when worker processes exit
       if not options[:no_flush]
-        ObjectSpace.each_object(IO) {|io| io.flush if not io.closed? }
+        ObjectSpace.each_object(IO) do |io|
+          io.flush if io != STDIN and not io.closed?
+        end
       end
 
       workers = []
