@@ -296,7 +296,15 @@ module Parallel
       # when worker processes exit
       if not options[:no_flush]
         ObjectSpace.each_object(IO) do |io|
-          io.flush if io != STDIN and not io.closed?
+          begin
+            io.flush if not io.closed?
+          rescue IOError => e
+            # Some long running processes throw the uninitialized stream exception
+            # for some io object, but I have not determined which it is
+            if e.message != 'uninitialized stream'
+              raise e
+            end
+          end
         end
       end
 
