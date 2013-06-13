@@ -221,6 +221,7 @@ module Parallel
       exception = nil
 
       res_thread = start_result_thread items, options[:with_result]
+      lock = Mutex.new
 
       in_threads(options[:count]) do
         # as long as there are more items, work on one of them
@@ -233,7 +234,9 @@ module Parallel
           with_instrumentation items[index], index, options do
             begin
               results[index] = call_with_index(items, index, options, &block)
-              notify_result_thread res_thread, results, index
+              lock.synchronize {
+                notify_result_thread res_thread, results, index
+              }
             rescue Exception => e
               exception = e
               break
@@ -256,6 +259,7 @@ module Parallel
       exception = nil
 
       res_thread = start_result_thread items, options[:with_result]
+      lock = Mutex.new
 
       in_threads(options[:count]) do |i|
         worker = workers[i]
@@ -274,7 +278,9 @@ module Parallel
               exception = output.exception
             else
               results[index] = output
-              notify_result_thread res_thread, results, index
+              lock.synchronize {
+                notify_result_thread res_thread, results, index
+              }
             end
           end
         ensure
