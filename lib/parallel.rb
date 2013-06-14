@@ -161,57 +161,39 @@ module Parallel
       `which hwprefs` != ''
     end
 
-    def start_result_thread(items, processor)
+    def start_result_processor(items, processor)
       if not processor
         return nil
       end
 
+      queue = Queue.new
       thread = Thread.new do
-        processed = {}
-        cur = Thread.current
-
-        while not cur[:done] or processed.keys.length != cur[:queued].keys.length do
-          if processed.keys.length == cur[:queued].keys.length
-            Thread.stop
-          end
-          (cur[:queued].keys - processed.keys).each do |index|
-            begin
-              processor.call(cur[:results][index], items[index], index)
-              processed[index] = true
-            rescue Exception => e
-              cur[:exception] = e
-              break
-            end
+        while i < items.length
+          begin
+            index, result = queue.pop
+            processor.call(result, items[index], index)
+            i += 1
+          rescue Exception => e
+            Thread.current[:exception] = e
+            break
           end
         end
       end
 
-      # Set up the thread local vars here instead of in the thread to prevent
-      # synchronization issues where notify_result_thread gets called before
-      # the thread has started for the first time
-      thread[:results] = []
-      thread[:queued] = {}
-      thread[:done] = false
-
-      thread
+      {:thread => thread, :queue => queue}
     end
 
-    def stop_result_thread(thread)
-      if thread
-        thread[:done] = true
-        raise thread[:exception] if thread[:exception]
-        if thread.alive?
-          thread.run
-          thread.join
-        end
+    def finish_result_processor(processor)
+      if processor
+        t = processor[:thread]
+        raise t[:exception] if t[:exception]
+        t.join if t.alive?
       end
     end
 
-    def notify_result_thread(thread, results, index)
-      if thread
-        thread[:results] = results
-        thread[:queued][index] = true
-        thread.run
+    def notify_result(processor, results, index)
+      if processor
+        processor[:queue] << [index, results[index]]
       end
     end
 
@@ -220,8 +202,7 @@ module Parallel
       current = -1
       exception = nil
 
-      res_thread = start_result_thread items, options[:with_result]
-      lock = Mutex.new
+      processor = start_result_processor items, options[:with_result]
 
       in_threads(options[:count]) do
         # as long as there are more items, work on one of them
@@ -234,9 +215,7 @@ module Parallel
           with_instrumentation items[index], index, options do
             begin
               results[index] = call_with_index(items, index, options, &block)
-              lock.synchronize {
-                notify_result_thread res_thread, results, index
-              }
+              notify_result processor, results, index
             rescue Exception => e
               exception = e
               break
@@ -245,9 +224,9 @@ module Parallel
         end
       end
 
-      stop_result_thread res_thread
-
       raise exception if exception
+
+      finish_result_processor processor
 
       results
     end
@@ -258,8 +237,7 @@ module Parallel
       results = []
       exception = nil
 
-      res_thread = start_result_thread items, options[:with_result]
-      lock = Mutex.new
+      processor = start_result_processor items, options[:with_result]
 
       in_threads(options[:count]) do |i|
         worker = workers[i]
@@ -278,9 +256,7 @@ module Parallel
               exception = output.exception
             else
               results[index] = output
-              lock.synchronize {
-                notify_result_thread res_thread, results, index
-              }
+              notify_result processor, results, index
             end
           end
         ensure
@@ -289,9 +265,9 @@ module Parallel
         end
       end
 
-      stop_result_thread res_thread
-
       raise exception if exception
+
+      finish_result_processor processor
 
       results
     end
