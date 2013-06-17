@@ -168,6 +168,8 @@ module Parallel
 
       queue = Queue.new
       thread = Thread.new do
+        i = 0
+
         while i < items.length
           begin
             index, result = queue.pop
